@@ -8,7 +8,8 @@ and after the project will apply [Semantic Versioning](https://semver.org/spec/v
 ## [Unreleased][]
 ### Changed
 
-- Call to `registerPlatform` changed to include package name (see [#8](https://github.com/itavero/homebridge-z2m/issues/6)).
+- Call to `registerPlatform` changed to include package name (see [#8](https://github.com/itavero/homebridge-z2m/issues/8)).
+- Restored support for Air Pressure Sensors (see [#7](https://github.com/itavero/homebridge-z2m/issues/7)).
 
 ## [0.0.5][] - 2020-07-05
 ### Changed
