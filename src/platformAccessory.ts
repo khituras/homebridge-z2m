@@ -146,8 +146,16 @@ export class Zigbee2mqttAccessory {
     this.updateTimer.restart();
 
     // Generate map
+    let excluded_keys : string[] = [];
+    if (Array.isArray(this.additionalConfig.excluded_keys)) {
+      excluded_keys = this.additionalConfig.excluded_keys;
+    }
     const map = new Map<string, CharacteristicValue>();
     for (const key in state) {
+      if (excluded_keys.includes(key)) {
+        this.log.debug(`Exclude '${key}' from state for ${this.ieeeAddress} as configured.`);
+        continue;
+      }
       map.set(key, state[key] as CharacteristicValue);
     }
 
@@ -200,20 +208,9 @@ export class Zigbee2mqttAccessory {
   private createServiceForKey(key: string, state: Map<string, CharacteristicValue> | undefined = undefined,
     handledKeys: Set<string> | undefined = undefined) {
     // Check if key is excluded/ignored
-    if (Array.isArray(this.additionalConfig.excluded_keys)) {
-      if (this.additionalConfig.excluded_keys.includes(key)) {
-        this.log.debug(`Key '${key}' excluded for device '${this.ieeeAddress}' in configuration.`);
-
-        if (handledKeys !== undefined) {
-          this.log.debug(`Marked excluded_keys for device '${this.ieeeAddress}' as handled.`);
-          for (const key of this.additionalConfig.excluded_keys) {
-            handledKeys.add(key);
-          }
-        }
-
-        // Key is excluded. Do not continue.
-        return;
-      }
+    if (Array.isArray(this.additionalConfig.excluded_keys) && this.additionalConfig.excluded_keys.includes(key)) {
+      this.log.debug(`Key '${key}' excluded for device '${this.ieeeAddress}' in configuration.`);
+      return;
     }
 
     // Create new service (if possible)
