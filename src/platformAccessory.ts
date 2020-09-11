@@ -6,6 +6,7 @@ import { ExtendedTimer } from './timer';
 import { hap } from './hap';
 
 import * as color_convert from 'color-convert';
+import * as crc from 'crc';
 
 export class Zigbee2mqttAccessory {
   public static readonly IGNORED_STATE_KEYS: Set<string> = new Set<string>(
@@ -71,6 +72,11 @@ export class Zigbee2mqttAccessory {
             const example = new Map<string, CharacteristicValue>();
             example.set('state', SwitchServiceWrapper.OFF);
             this.createServiceForKey('state', example);
+          }
+          break;
+        case hap.Service.StatelessProgrammableSwitch.UUID:
+          if (srv.subtype) {
+            this.createServiceForKey('click', new Map<string, CharacteristicValue>([['click', srv.subtype]]));
           }
           break;
         case hap.Service.LockMechanism.UUID:
@@ -151,11 +157,11 @@ export class Zigbee2mqttAccessory {
     // Iterate over existing services
     for (let i = this.services.length - 1; i >= 0; i--) {
       const srv = this.services[i];
-      const keysUsed = this.callServiceWrapper(srv, state);
+      const [isActive, keysUsed] = this.callServiceWrapper(srv, state);
 
-      if (keysUsed.size > 0) {
-        keysUsed.forEach((key) => handledKeys.add(key));
-      } else {
+      keysUsed.forEach((key) => handledKeys.add(key));
+
+      if (!isActive) {
         // Get rid of old service (assumption: every update in MQTT contains all available fields)
         srv.remove(this.accessory);
         this.services.splice(i, 1);
@@ -295,6 +301,17 @@ export class Zigbee2mqttAccessory {
         }
         break;
       }
+      case 'click':
+      {
+        const clickValue = state?.get('click');
+        if (clickValue !== undefined && typeof clickValue === 'string' && clickValue.length > 0) {
+          const triggerValue: string = clickValue as string;
+          const wrapper = new StatelessClickService(
+            this.getOrAddService(hap.Service.StatelessProgrammableSwitch, triggerValue), triggerValue);
+          this.addService(wrapper, state, handledKeys);
+        }
+        break;
+      }
       case 'state_left':
       case 'state_right':
       case 'state_center':
@@ -342,7 +359,7 @@ export class Zigbee2mqttAccessory {
     this.services.push(srv);
     let used_keys: Set<string> = new Set<string>();
     if (state !== undefined) {
-      used_keys = this.callServiceWrapper(srv, state);
+      [, used_keys] = this.callServiceWrapper(srv, state);
     }
     this.platform.api.updatePlatformAccessories([this.accessory]);
 
@@ -366,19 +383,26 @@ export class Zigbee2mqttAccessory {
     }
   }
 
-  private callServiceWrapper(srv: ServiceWrapper, state: Map<string, CharacteristicValue>): Set<string> {
+  private callServiceWrapper(srv: ServiceWrapper, state: Map<string, CharacteristicValue>): [boolean, Set<string>] {
     const handledKeys = new Set<string>();
-    for (const key of state.keys()) {
+    let isActive = false;
+    for (const entry of state.entries()) {
+      const key: string = entry[0];
+      const value: CharacteristicValue = entry[1];
       if (srv.appliesToKey(key)) {
-        srv.updateValueForKey(key, state.get(key) as CharacteristicValue);
-        handledKeys.add(key);
+        const result = srv.updateValueForKey(key, value);
+        if (result !== UpdateResult.NotActive) {
+          isActive = true;
+        }
+        if (result === UpdateResult.KeyHandled) {
+          handledKeys.add(key);
+        }
       }
     }
-    return handledKeys;
+    return [isActive, handledKeys];
   }
 
   private getOrAddService<T extends WithUUID<typeof Service>>(service: T, subType?: string, name?: string): Service {
-    this.accessory.getServiceByUUIDAndSubType;
     const existingService = subType ? this.accessory.getServiceById(service, subType) : this.accessory.getService(service);
     if (existingService !== undefined) {
       return existingService;
@@ -425,10 +449,16 @@ export class Zigbee2mqttAccessory {
   }
 }
 
+export enum UpdateResult {
+  NotActive,
+  KeyHandled,
+  KeyIgnored
+}
+
 export interface ServiceWrapper {
   readonly displayName: string;
   appliesToKey(key: string): boolean;
-  updateValueForKey(key: string, value: unknown): void;
+  updateValueForKey(key: string, value: unknown): UpdateResult;
   remove(accessory: PlatformAccessory): void;
 }
 
@@ -458,13 +488,15 @@ export class SingleReadOnlyValueServiceWrapper implements ServiceWrapper {
     return `${this.key} (${this.service.UUID})`;
   }
 
-  updateValueForKey(key: string, value: unknown): void {
+  updateValueForKey(key: string, value: unknown): UpdateResult {
     if (this.key === key) {
       if (this.transformMqttValue !== undefined) {
         value = this.transformMqttValue(key, value as CharacteristicValue);
       }
       this.service.updateCharacteristic(this.characteristic, value as CharacteristicValue);
+      return UpdateResult.KeyHandled;
     }
+    return UpdateResult.NotActive;
   }
 
   appliesToKey(key: string): boolean {
@@ -490,13 +522,15 @@ export class BatteryServiceWrapper implements ServiceWrapper {
     return key === 'battery';
   }
 
-  updateValueForKey(key: string, value: unknown): void {
+  updateValueForKey(key: string, value: unknown): UpdateResult {
     if (key === 'battery') {
       this.service.updateCharacteristic(hap.Characteristic.BatteryLevel, value as number);
       this.service.updateCharacteristic(hap.Characteristic.StatusLowBattery, (value as number < 30)
         ? hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
         : hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL);
+      return UpdateResult.KeyHandled;
     }
+    return UpdateResult.NotActive;
   }
 
   remove(accessory: PlatformAccessory): void {
@@ -557,7 +591,7 @@ export class WindowCoveringServiceWrapper implements ServiceWrapper {
     return key === 'position';
   }
 
-  updateValueForKey(key: string, value: unknown): void {
+  updateValueForKey(key: string, value: unknown): UpdateResult {
     if (key === 'position') {
       const newPosition = value as number;
       let state = hap.Characteristic.PositionState.STOPPED;
@@ -579,7 +613,9 @@ export class WindowCoveringServiceWrapper implements ServiceWrapper {
         .updateValue(newPosition);
 
       this.currentPosition = newPosition;
+      return UpdateResult.KeyHandled;
     }
+    return UpdateResult.NotActive;
   }
 
   remove(accessory: PlatformAccessory): void {
@@ -619,7 +655,7 @@ export class LockMechanismServiceWrapper implements ServiceWrapper {
     return key === 'state' || key === 'lock_state';
   }
 
-  updateValueForKey(key: string, value: unknown): void {
+  updateValueForKey(key: string, value: unknown): UpdateResult {
     let updatedState: CharacteristicValue;
     switch (key) {
       case 'lock_state':
@@ -640,11 +676,11 @@ export class LockMechanismServiceWrapper implements ServiceWrapper {
         }
         this.service.getCharacteristic(hap.Characteristic.LockCurrentState)
           .updateValue(updatedState);
-        break;
+        return UpdateResult.KeyHandled;
       case 'state':
         if (this.lockStateIsAvailable) {
           // Don't use this value if `lock_state` is also reported.
-          return;
+          return UpdateResult.KeyIgnored;
         }
         switch (value as string) {
           case LockMechanismServiceWrapper.LOCKED:
@@ -659,10 +695,10 @@ export class LockMechanismServiceWrapper implements ServiceWrapper {
         }
         this.service.getCharacteristic(hap.Characteristic.LockCurrentState)
           .updateValue(updatedState);
-        break;
+        return UpdateResult.KeyHandled;
       default:
-        // Ignore other keys.
-        break;
+        // Can't handle other keys.
+        return UpdateResult.NotActive;
     }
   }
 
@@ -698,11 +734,13 @@ export class SwitchServiceWrapper implements ServiceWrapper {
     return key === this.key;
   }
 
-  updateValueForKey(key: string, value: unknown): void {
+  updateValueForKey(key: string, value: unknown): UpdateResult {
     if (key === this.key) {
       const actualValue: boolean = (value === SwitchServiceWrapper.ON);
       this.service.updateCharacteristic(hap.Characteristic.On, actualValue);
+      return UpdateResult.KeyHandled;
     }
+    return UpdateResult.NotActive;
   }
 
   private setOn(value: CharacteristicValue, callback: CharacteristicSetCallback): void {
@@ -861,18 +899,18 @@ export class LightbulbServiceWrapper extends SwitchServiceWrapper {
     return key === 'brightness' || key === 'color_temp' || key === 'color' || super.appliesToKey(key);
   }
 
-  updateValueForKey(key: string, value: unknown): void {
-    super.updateValueForKey(key, value);
+  updateValueForKey(key: string, value: unknown): UpdateResult {
+    const result: UpdateResult = super.updateValueForKey(key, value);
 
     switch (key) {
       case 'brightness':
         this.addBrightness();
         this.service.updateCharacteristic(hap.Characteristic.Brightness, Math.round(((value as number) / 255) * 100));
-        break;
+        return UpdateResult.KeyHandled;
       case 'color_temp':
         this.addColorTemperature();
         this.service.updateCharacteristic(hap.Characteristic.ColorTemperature, value as number);
-        break;
+        return UpdateResult.KeyHandled;
       case 'color':
       {
         this.addColors();
@@ -881,8 +919,51 @@ export class LightbulbServiceWrapper extends SwitchServiceWrapper {
 
         this.service.updateCharacteristic(hap.Characteristic.Hue, hueSat[0]);
         this.service.updateCharacteristic(hap.Characteristic.Saturation, hueSat[1]);
-        break;
+        return UpdateResult.KeyHandled;
       }
     }
+    return result;
+  }
+}
+
+export class StatelessClickService implements ServiceWrapper {
+  constructor(
+    private readonly service: Service,
+    private readonly triggerSingleValue: string) {
+
+    // Calculate CRC8 from value to get a semi-unique index.
+    let labelIndex : CharacteristicValue = crc.crc8(this.triggerSingleValue);
+    if (labelIndex === 0) {
+      labelIndex = 1;
+    }
+    this.service.updateCharacteristic(hap.Characteristic.ServiceLabelIndex, labelIndex);
+  }
+
+  get displayName(): string {
+    return 'StatelessClickService';
+  }
+
+  appliesToKey(key: string): boolean {
+    return key === 'click';
+  }
+
+  updateValueForKey(key: string, value: unknown): UpdateResult {
+    if (key === 'click') {
+      if (value === '') {
+        // Always mark empty values as handled
+        return UpdateResult.KeyHandled;
+      }
+      if (value === this.triggerSingleValue) {
+        this.service.updateCharacteristic(hap.Characteristic.ProgrammableSwitchEvent,
+          hap.Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS);
+        return UpdateResult.KeyHandled;
+      }
+      return UpdateResult.KeyIgnored;
+    }
+    return UpdateResult.NotActive;
+  }
+
+  remove(accessory: PlatformAccessory): void {
+    accessory.removeService(this.service);
   }
 }
