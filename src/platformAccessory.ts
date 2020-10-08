@@ -19,8 +19,9 @@ export class Zigbee2mqttAccessory {
   private publishIsScheduled: boolean;
 
   get log(): Logger {
-    Logger.setDebugEnabled();
-    return this.platform.log;
+    const log = this.platform.log;
+    log.setDebugEnabled();
+    return log;
   }
 
   constructor(
