@@ -195,6 +195,7 @@ export class Zigbee2mqttAccessory {
   private createServiceForKey(key: string, state: Map<string, CharacteristicValue> | undefined = undefined,
     handledKeys: Set<string> | undefined = undefined) {
     // Create new service (if possible)
+    this.log.info("Erik: got key " + key);
     switch (key) {
       case 'humidity':
       {
