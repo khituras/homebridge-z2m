@@ -35,7 +35,7 @@ export class Zigbee2mqttAccessory {
     // Recreate ServiceWrappers from restored services
     for (const srv of this.accessory.services) {
       const uuid = srv.getServiceId();
-
+      this.log.info("Erik: Got service ID " + uuid);
       switch (uuid) {
         case hap.Service.TemperatureSensor.UUID:
           this.createServiceForKey('temperature');
@@ -318,6 +318,7 @@ export class Zigbee2mqttAccessory {
       case 'state_center_right':
       case 'state_bottom_right':
       {
+        this.log.info("Erik: Got into the switch section");
         const subType = SwitchServiceWrapper.getSubTypeFromKey(key);
         const wrapper = new SwitchServiceWrapper(this.getOrAddService(hap.Service.Switch, subType),
           this.queuePublishData.bind(this), key);
