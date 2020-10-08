@@ -19,6 +19,7 @@ export class Zigbee2mqttAccessory {
   private publishIsScheduled: boolean;
 
   get log(): Logger {
+    Logger.setDebugEnabled();
     return this.platform.log;
   }
 
@@ -36,6 +37,7 @@ export class Zigbee2mqttAccessory {
     for (const srv of this.accessory.services) {
       const uuid = srv.getServiceId();
       this.log.info("Erik: Got service ID " + uuid);
+      this.log.debug("Erik: Trying to add debug messaged")
       switch (uuid) {
         case hap.Service.TemperatureSensor.UUID:
           this.createServiceForKey('temperature');
@@ -150,6 +152,7 @@ export class Zigbee2mqttAccessory {
   }
 
   private handleServices(state: Map<string, CharacteristicValue>) {
+    this.log.info("Erik: handleServices")
     const handledKeys = new Set<string>();
 
     // Iterate over existing services
@@ -175,7 +178,7 @@ export class Zigbee2mqttAccessory {
         // might have been handled in the mean time by another service
         continue;
       }
-
+      this.log.info("Erik: Got unhandled key: " + key )
       this.createServiceForKey(key, state, handledKeys);
     }
 
