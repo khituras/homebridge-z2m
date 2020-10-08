@@ -121,7 +121,7 @@ export class Zigbee2mqttAccessory {
 
   updateDeviceInformation(info: Zigbee2mqttDeviceInfo) {
     this.accessory.context.device = info;
-
+    this.log.info("Erik: updateDeviceInformation with: " + JSON.stringify(info));
     let manufacturer: string = info.manufacturerName ?? 'zigbee2mqtt';
     if (info.vendor && info.vendor !== '-') {
       manufacturer = info.vendor;

@@ -115,7 +115,7 @@ export class Zigbee2mqttPlatform implements DynamicPlatformPlugin {
     if (!this.isDeviceExcluded(topic)) {
       const accessory = this.accessories.find((acc) => acc.matchesIdentifier(topic));
       if (accessory) {
-        this.log.info("Erik: Update device state of: " + JSON.stringify(accessory));
+        this.log.info("Erik: Update device state");
         accessory.updateStates(state);
       } else {
         this.log.debug(`Device '${topic}' not found for update.`);
