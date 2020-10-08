@@ -94,7 +94,7 @@ export class Zigbee2mqttPlatform implements DynamicPlatformPlugin {
       this.log.debug('Ignore message, because topic is unexpected.', topic);
       return;
     }
-
+    this.log.info("Erik: Got topic: " + topic + " with payload: " + payload.toString());
     topic = topic.substr(this.config.mqtt.base_topic.length + 1);
 
     if (topic === 'bridge/config/devices') {
@@ -196,6 +196,7 @@ export class Zigbee2mqttPlatform implements DynamicPlatformPlugin {
     if (this.isDeviceExcluded(device)) {
       return;
     }
+    this.log.info("Erik: createOrUpdateAccessory with " + JSON.stringify(device));
     const uuid = this.api.hap.uuid.generate(device.ieeeAddr);
     const existingAcc = this.accessories.find((acc) => acc.UUID === uuid);
     if (existingAcc) {
