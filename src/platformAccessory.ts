@@ -151,7 +151,7 @@ export class Zigbee2mqttAccessory {
   }
 
   private handleServices(state: Map<string, CharacteristicValue>) {
-    this.log.info("Erik: handleServices")
+    this.log.info("Erik: handleServices with input " + JSON.stringify(state));
     const handledKeys = new Set<string>();
 
     // Iterate over existing services
