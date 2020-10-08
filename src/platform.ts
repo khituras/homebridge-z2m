@@ -111,9 +111,11 @@ export class Zigbee2mqttPlatform implements DynamicPlatformPlugin {
   }
 
   private async handleDeviceUpdate(topic: string, state: Record<string, unknown>) {
+    this.log.info("Erik: handleDeviceUpdate");
     if (!this.isDeviceExcluded(topic)) {
       const accessory = this.accessories.find((acc) => acc.matchesIdentifier(topic));
       if (accessory) {
+        this.log.info("Erik: Update device state");
         accessory.updateStates(state);
       } else {
         this.log.debug(`Device '${topic}' not found for update.`);
@@ -200,6 +202,7 @@ export class Zigbee2mqttPlatform implements DynamicPlatformPlugin {
     const uuid = this.api.hap.uuid.generate(device.ieeeAddr);
     const existingAcc = this.accessories.find((acc) => acc.UUID === uuid);
     if (existingAcc) {
+      this.log.info("Erik: Updating existing device information.");
       existingAcc.updateDeviceInformation(device);
     } else {
       // New entry
